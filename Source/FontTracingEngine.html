@@ -111,14 +111,16 @@ function buttonLoadFontDemo_Clicked()
 
 class BezierCurve
 {
-	constructor(points)
+	constructor(vertices)
 	{
+		this.typeName = BezierCurve.name; // hack - For serialization.
+
 		// The first point is the start,
 		// the last point is the end,
 		// and the middle points are "control" points,
 		// which the curve approaches but does not reach.
 
-		this.points = points;
+		this.vertices = vertices;
 	}
 
 	bounds(distanceThreshold)
@@ -132,7 +134,7 @@ class BezierCurve
 
 	draw(graphics, distanceThreshold)
 	{
-		var pointsOnCurve = this.pointsAtResolutionThreshold(distanceThreshold);
+		var pointsOnCurve = this.verticesAtResolutionThreshold(distanceThreshold);
 
 		graphics.beginPath();
 
@@ -287,7 +289,7 @@ class BezierCurve
 		return intersectionsSoFar;
 	}
 
-	intersectionsWithEdge(edgeOther)
+	intersectionsWithEdgeOrCurve(edgeOther)
 	{
 		var edgeOtherAsCurve = new BezierCurve(edgeOther.vertices);
 
@@ -313,6 +315,18 @@ class BezierCurve
 
 		return pointsOnCurve;
 	}
+
+	// Serialization.
+
+	static prototypesSetOn(curveAsObject)
+	{
+		Object.setPrototypeOf(curveAsObject, BezierCurve.prototype);
+		curveAsObject.vertices.forEach
+		(
+			x => Coords.prototypesSetOn(x)
+		);
+	}
+
 }
 
 class BezierCurveSegment
@@ -349,7 +363,7 @@ class BezierCurveSegment
 		{
 			var t = this.tMinAndMax[tmm];	
 
-			var points = this.curve.points;
+			var points = this.curve.vertices;
 
 			while (points.length > 1)
 			{
@@ -838,7 +852,7 @@ class Display
 				{
 					var glyphEdge = glyphEdges[e];
 
-					var collisions = glyphEdge.intersectionsWithEdge
+					var collisions = glyphEdge.intersectionsWithEdgeOrCurve
 					(
 						edgeForPixelRow
 					);
@@ -932,6 +946,8 @@ class Edge
 {
 	constructor(vertices)
 	{
+		this.typeName = Edge.name;
+
 		this.vertices = vertices;
 		this.recalculateDerivedValues();
 	}
@@ -975,10 +991,11 @@ class Edge
 
 	intersectionWith(other)
 	{
+		var returnValue = null;
+
 		var edge0 = this;
 		var edge1 = other;
 
-		var returnValue = null;
 
 		var edge0ProjectedOntoEdge1 = edge0.clone().projectOnto
 		(
@@ -1024,6 +1041,33 @@ class Edge
 		}
 
 		return returnValue;
+	}
+
+	intersectionsWithEdgeOrCurve(other)
+	{
+		var intersections;
+
+		var otherTypeName = other.typeName;
+
+		if (otherTypeName == BezierCurve.name)
+		{
+			intersections = other.intersectionsWithEdgeOrCurve(this);
+		}
+		else if (otherTypeName == Edge.name)
+		{
+			var intersection = this.intersectionWith(other);
+			intersections = [];
+			if (intersection != null)
+			{
+				intersections.push(intersection);
+			}
+		}
+		else
+		{
+			throw new Error("Unexpected type!");
+		}
+
+		return intersections;
 	}
 
 	projectOnto(other)
@@ -1073,8 +1117,28 @@ class Edge
 	static prototypesSetOn(edgeAsObject)
 	{
 		Object.setPrototypeOf(edgeAsObject, Edge.prototype);
-		edgeAsObject.points.forEach(x => Coords.prototypesSetOn(x) );
+		edgeAsObject.vertices.forEach(x => Coords.prototypesSetOn(x) );
 		edgeAsObject.recalculateDerivedValues();
+	}
+}
+
+class EdgeOrCurve
+{
+	static prototypesSetOn(edgeOrCurveAsObject)
+	{
+		var typeName = edgeOrCurveAsObject.typeName;
+		if (typeName == Edge.name)
+		{
+			Edge.prototypesSetOn(edgeOrCurveAsObject);
+		}
+		else if (typeName == BezierCurve.name)
+		{
+			BezierCurve.prototypesSetOn(edgeOrCurveAsObject);
+		}
+		else
+		{
+			throw new Error("Unexpected type!");
+		}
 	}
 }
 
@@ -1084,12 +1148,16 @@ class Font
 	{
 		this.name = name;
 		this.glyphs = glyphs;
-
-		this._glyphsBySymbol = new Map(glyphs.map(x => [x.symbol, x] ) );
 	}
 
 	glyphBySymbol(symbol)
 	{
+		if (this._glyphsBySymbol == null)
+		{
+			this._glyphsBySymbol =
+				new Map(this.glyphs.map(x => [x.symbol, x] ) );
+		}
+
 		return this._glyphsBySymbol.get(symbol);
 	}
 
@@ -1190,7 +1258,7 @@ class Path
 		for (var e = 0; e < this.edges.length; e++)
 		{
 			var edge = this.edges[e];
-			var pointsForEdge = edge.points;
+			var pointsForEdge = edge.vertices;
 
 			var edgeBounds = Bounds.fromPositionsMany(pointsForEdge);
 			boundsForEdges.push(edgeBounds);
@@ -1205,7 +1273,10 @@ class Path
 	{
 		Object.setPrototypeOf(pathAsObject, Path.prototype);
 
-		pathAsObject.edges.forEach(x => Edge.prototypesSetOn(x) );
+		pathAsObject.edges.forEach
+		(
+			x => EdgeOrCurve.prototypesSetOn(x)
+		);
 
 		pathAsObject.recalculate();
 	}
