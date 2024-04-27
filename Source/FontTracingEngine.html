@@ -113,8 +113,6 @@ class BezierCurve
 {
 	constructor(vertices)
 	{
-		this.typeName = BezierCurve.name; // hack - For serialization.
-
 		// The first point is the start,
 		// the last point is the end,
 		// and the middle points are "control" points,
@@ -946,8 +944,6 @@ class Edge
 {
 	constructor(vertices)
 	{
-		this.typeName = Edge.name;
-
 		this.vertices = vertices;
 		this.recalculateDerivedValues();
 	}
@@ -1047,7 +1043,7 @@ class Edge
 	{
 		var intersections;
 
-		var otherTypeName = other.typeName;
+		var otherTypeName = other.constructor.name;
 
 		if (otherTypeName == BezierCurve.name)
 		{
@@ -1126,18 +1122,14 @@ class EdgeOrCurve
 {
 	static prototypesSetOn(edgeOrCurveAsObject)
 	{
-		var typeName = edgeOrCurveAsObject.typeName;
-		if (typeName == Edge.name)
+		var verticesCount = edgeOrCurveAsObject.vertices.length;
+		if (verticesCount == 2)
 		{
 			Edge.prototypesSetOn(edgeOrCurveAsObject);
 		}
-		else if (typeName == BezierCurve.name)
-		{
-			BezierCurve.prototypesSetOn(edgeOrCurveAsObject);
-		}
 		else
 		{
-			throw new Error("Unexpected type!");
+			BezierCurve.prototypesSetOn(edgeOrCurveAsObject);
 		}
 	}
 }
